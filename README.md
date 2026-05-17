@@ -228,7 +228,7 @@ See [RELEASE.md](RELEASE.md) for the release checklist.
 
 ## Status
 
-Rick is early `0.1.0` alpha software. The current focus is functional quality, workflow reliability, and useful regression packs.
+Rick is early `0.1.1` alpha software. The current focus is functional quality, workflow reliability, and useful regression packs.
 
 ## License
 

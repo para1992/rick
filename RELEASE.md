@@ -49,7 +49,7 @@ Build a wheel and install it in a clean virtual environment:
 ```bash
 python3 -m pip wheel --no-deps . -w /tmp/rick-release-wheel
 python3 -m venv /tmp/rick-release-venv
-/tmp/rick-release-venv/bin/python -m pip install /tmp/rick-release-wheel/rick_cli-0.1.0-py3-none-any.whl
+/tmp/rick-release-venv/bin/python -m pip install /tmp/rick-release-wheel/rick_cli-0.1.1-py3-none-any.whl
 /tmp/rick-release-venv/bin/rick --help
 OPENROUTER_API_KEY= /tmp/rick-release-venv/bin/rick 'RESOLVE("Installed wheel smoke","Must complete locally")>GEN(plan,1)>JUDGE' --mode LOG_STEP --run-dir /tmp/rick-installed-wheel-smoke --max-calls 5
 /tmp/rick-release-venv/bin/python -m pip check
