@@ -1,0 +1,37 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# Rick local state and generated outputs
+.rick/
+docs/assets/
+runs/
+tmp-check/
+examples/
+
+# Local output files
+*.log
+*.out
+*.err
+
+# OS/editor noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
