@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from rick_cli.rick import colored_rick_panel_fragments
-from rick_cli.tui import TuiEvent, _event_fragments, _syntax_fragments, interactive_run_dir
+from rick_cli.tui import RickTui, TuiEvent, _event_fragments, _syntax_fragments, interactive_run_dir
 
 
 class TuiTests(unittest.TestCase):
@@ -39,6 +40,24 @@ class TuiTests(unittest.TestCase):
         fragments = _event_fragments(TuiEvent(kind="status", text="llm call 1/3: GEN(plan)", stamp="12:00:00"))
 
         self.assertTrue(any(style == "class:stage.plan" for style, _ in fragments))
+
+    def test_chat_scroll_stops_following_tail_until_scrolled_back_down(self) -> None:
+        tui = RickTui(SimpleNamespace())
+        for index in range(30):
+            tui._append("status", f"event {index}")
+
+        tail_position = tui._chat_cursor_position()
+        self.assertEqual(tail_position.y, tui._chat_line_count_unlocked() - 1)
+
+        tui._scroll_chat(-12)
+        scrolled_position = tui._chat_cursor_position()
+        self.assertLess(scrolled_position.y, tail_position.y)
+
+        tui._append("status", "new event")
+        self.assertEqual(tui._chat_cursor_position().y, scrolled_position.y)
+
+        tui._scroll_chat(10_000)
+        self.assertEqual(tui._chat_cursor_position().y, tui._chat_line_count_unlocked() - 1)
 
 
 if __name__ == "__main__":

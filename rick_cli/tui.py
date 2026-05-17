@@ -8,17 +8,21 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from prompt_toolkit.application import Application
+from prompt_toolkit.data_structures import Point
 from prompt_toolkit.document import Document
 from prompt_toolkit.formatted_text import AnyFormattedText
+from prompt_toolkit.formatted_text.utils import split_lines
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.lexers import Lexer
 from prompt_toolkit.layout import Layout
 from prompt_toolkit.layout.containers import HSplit, VSplit, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension as D
+from prompt_toolkit.layout.margins import ScrollbarMargin
+from prompt_toolkit.mouse_events import MouseEventType
 from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import Frame, TextArea
 
@@ -31,6 +35,8 @@ MAX_EVENTS = 220
 MAX_OUTPUT_CHARS = 8000
 DEFAULT_INTERACTIVE_RUN_ROOT = Path("runs/interactive")
 DOG_FRAME_SECONDS = 0.28
+CHAT_PAGE_SCROLL_LINES = 12
+CHAT_WHEEL_SCROLL_LINES = 3
 STEP_RE = re.compile(
     r'(?P<string>"(?:[^"\\]|\\.)*")'
     r"|(?P<step>\b(?:RESOLVE|CONTEXT|GEN_BEFORE|GEN_AFTER|GEN|UNFOLD_JUDGE|UNFOLD|JUDGE|OUTPUT_AI_GLUE|OUTPUT_GLUE|EDIT|MATERIALIZE|VERIFY)\b)"
@@ -61,8 +67,16 @@ class RickTui:
         self._counter = 0
         self._started_at = time.monotonic()
         self._app: Application | None = None
+        self._chat_cursor_y = 0
+        self._chat_follow_tail = True
 
-        self._chat_control = FormattedTextControl(self._chat_fragments, focusable=False)
+        self._chat_control = ScrollableFormattedTextControl(
+            self._chat_fragments,
+            focusable=False,
+            show_cursor=False,
+            get_cursor_position=self._chat_cursor_position,
+            scroll_callback=self._scroll_chat,
+        )
         self.input = TextArea(
             height=3,
             prompt=[("class:prompt", "> ")],
@@ -88,6 +102,14 @@ class RickTui:
         def _(event) -> None:
             self._clear_events()
 
+        @key_bindings.add("pageup")
+        def _(event) -> None:
+            self._scroll_chat(-CHAT_PAGE_SCROLL_LINES)
+
+        @key_bindings.add("pagedown")
+        def _(event) -> None:
+            self._scroll_chat(CHAT_PAGE_SCROLL_LINES)
+
         root = HSplit(
             [
                 Window(FormattedTextControl(self._header_fragments), height=1),
@@ -98,6 +120,7 @@ class RickTui:
                                 self._chat_control,
                                 wrap_lines=True,
                                 always_hide_cursor=True,
+                                right_margins=[ScrollbarMargin()],
                             ),
                             title="context",
                         ),
@@ -134,6 +157,7 @@ class RickTui:
         if not source:
             return True
 
+        self._follow_chat_tail()
         command = source.lower()
         if command in {"/exit", "/quit", "/q"}:
             if self._app is not None:
@@ -206,6 +230,7 @@ class RickTui:
         with self._lock:
             self._events.append(TuiEvent(kind=kind, text=text, stamp=datetime.now().strftime("%H:%M:%S")))
             self._events = self._events[-MAX_EVENTS:]
+            self._clamp_chat_cursor_unlocked()
 
         self._invalidate()
 
@@ -213,6 +238,8 @@ class RickTui:
         with self._lock:
             self._events = []
             self._stage = "MODEL"
+            self._chat_cursor_y = 0
+            self._chat_follow_tail = True
 
         self._invalidate()
 
@@ -220,13 +247,39 @@ class RickTui:
         with self._lock:
             events = list(self._events)
 
-        fragments: list[tuple[str, str]] = []
+        return _chat_fragments_for_events(events)
 
-        for event in events:
-            fragments.extend(_event_fragments(event))
-            fragments.append(("", "\n"))
+    def _chat_cursor_position(self) -> Point:
+        with self._lock:
+            last_line = max(0, self._chat_line_count_unlocked() - 1)
+            line = last_line if self._chat_follow_tail else min(self._chat_cursor_y, last_line)
 
-        return fragments
+        return Point(x=0, y=line)
+
+    def _scroll_chat(self, delta: int) -> None:
+        with self._lock:
+            last_line = max(0, self._chat_line_count_unlocked() - 1)
+            current = last_line if self._chat_follow_tail else min(self._chat_cursor_y, last_line)
+            target = min(last_line, max(0, current + delta))
+            self._chat_cursor_y = target
+            self._chat_follow_tail = target >= last_line
+
+        self._invalidate()
+
+    def _follow_chat_tail(self) -> None:
+        with self._lock:
+            self._chat_follow_tail = True
+            self._clamp_chat_cursor_unlocked()
+
+    def _clamp_chat_cursor_unlocked(self) -> None:
+        last_line = max(0, self._chat_line_count_unlocked() - 1)
+        if self._chat_follow_tail:
+            self._chat_cursor_y = last_line
+        else:
+            self._chat_cursor_y = min(self._chat_cursor_y, last_line)
+
+    def _chat_line_count_unlocked(self) -> int:
+        return max(1, len(list(split_lines(_chat_fragments_for_events(self._events)))))
 
     def _header_fragments(self) -> AnyFormattedText:
         with self._lock:
@@ -242,7 +295,7 @@ class RickTui:
     def _footer_fragments(self) -> AnyFormattedText:
         return [
             ("class:footer", " Enter: run workflow  "),
-            ("class:muted", "/help /clear /exit  F2 clear  Ctrl-Q exit"),
+            ("class:muted", "PgUp/PgDn scroll  /help /clear /exit  F2 clear  Ctrl-Q exit"),
         ]
 
     def _dog_fragments(self) -> AnyFormattedText:
@@ -253,6 +306,23 @@ class RickTui:
     def _invalidate(self) -> None:
         if self._app is not None:
             self._app.invalidate()
+
+
+class ScrollableFormattedTextControl(FormattedTextControl):
+    def __init__(self, *args: Any, scroll_callback: Callable[[int], None], **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._scroll_callback = scroll_callback
+
+    def mouse_handler(self, mouse_event):
+        if mouse_event.event_type == MouseEventType.SCROLL_UP:
+            self._scroll_callback(-CHAT_WHEEL_SCROLL_LINES)
+            return None
+
+        if mouse_event.event_type == MouseEventType.SCROLL_DOWN:
+            self._scroll_callback(CHAT_WHEEL_SCROLL_LINES)
+            return None
+
+        return super().mouse_handler(mouse_event)
 
 
 def interactive_run_dir(base: Path, counter: int) -> Path:
@@ -300,6 +370,16 @@ def _event_fragments(event: TuiEvent) -> list[tuple[str, str]]:
         fragments.append((style, event.text))
 
     fragments.append(("", "\n"))
+    return fragments
+
+
+def _chat_fragments_for_events(events: list[TuiEvent]) -> list[tuple[str, str]]:
+    fragments: list[tuple[str, str]] = []
+
+    for event in events:
+        fragments.extend(_event_fragments(event))
+        fragments.append(("", "\n"))
+
     return fragments
 
 
