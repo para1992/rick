@@ -1,0 +1,45 @@
+[project]
+name = "rick"
+version = "0.1.0"
+description = "Rick: DSL workflow runtime for seeded LLM candidate generation"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+keywords = ["llm", "workflow", "cli", "openrouter"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "certifi>=2024.0.0",
+    "prompt_toolkit>=3.0.0",
+    "rich>=13.0.0",
+    "pillow>=10.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+release = [
+    "build>=1.2.0",
+]
+
+[project.scripts]
+seedflow = "seedflow_cli.cli:main"
+rick = "seedflow_cli.cli:main"
+
+[tool.setuptools]
+packages = ["seedflow_cli"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,12 @@
+include README.md
+include LICENSE
+include CHANGELOG.md
+include RELEASE.md
+include requirements.lock
+recursive-include docs *.md *.sh *.tape
+prune docs/assets
+prune runs
+prune tmp-check
+prune examples
+global-exclude __pycache__/*
+global-exclude *.py[cod]
