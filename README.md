@@ -4,7 +4,7 @@ Rick is a local CLI for turning one-shot LLM prompts into judged, logged workflo
 
 It is built for work where the first AI answer is not good enough: writing, product docs, refactoring plans, code generation, and any task where you want candidates, a judge, and a trace you can inspect later.
 
-<img src="docs/Image.png" alt="Rick terminal UI showing a judged workflow run" width="100%">
+<img src="docs/video-2x.gif" alt="Rick CLI running a judged LLM workflow" width="100%">
 
 ## Why Rick
 
